@@ -1,0 +1,9 @@
+echo "node_modules/
+__pycache__/
+*.pyc
+.env
+prism.db
+*.log
+dist/
+.vite/
+" > .gitignore

@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>PRISM — React Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#05070f;--surface:#080c18;--card:#0c1120;--card2:#0f1528;
+  --border:#16203a;--border2:#1e2d50;
+  --cyan:#00e5ff;--green:#00ff9d;--amber:#ffc840;--red:#ff3f5b;--violet:#a855f7;
+  --text:#e8eeff;--text2:#7a8ab0;--muted:#2e3d5c;
+  --ff-d:'Orbitron',sans-serif;--ff-b:'Syne',sans-serif;--ff-m:'JetBrains Mono',monospace;
+}
+html,body,#root{height:100%;background:var(--bg);color:var(--text);font-family:var(--ff-b);}
+::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:var(--surface);}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+@keyframes scaleIn{from{opacity:0;transform:scale(0.96);}to{opacity:1;transform:scale(1);}}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.25;}}
+@keyframes spin{to{transform:rotate(360deg);}}
+@keyframes glowPulse{0%,100%{filter:drop-shadow(0 0 20px rgba(0,229,255,0.25));}50%{filter:drop-shadow(0 0 55px rgba(0,229,255,0.55));}}
+@keyframes diamondFloat{0%,100%{transform:rotate(45deg) translateY(0);}50%{transform:rotate(45deg) translateY(-6px);}}
+.page-enter{animation:scaleIn 0.3s cubic-bezier(0.16,1,0.3,1) both;}
+.msg-enter{animation:fadeUp 0.25s cubic-bezier(0.16,1,0.3,1) both;}
+input[type=range]{accent-color:var(--cyan);cursor:pointer;}
+select,textarea,input{font-family:var(--ff-m);}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+const API='http://localhost:8000';
+const C={bg:'#05070f',surface:'#080c18',card:'#0c1120',card2:'#0f1528',
+  border:'#16203a',border2:'#1e2d50',
+  cyan:'#00e5ff',green:'#00ff9d',amber:'#ffc840',red:'#ff3f5b',violet:'#a855f7',
+  text:'#e8eeff',text2:'#7a8ab0',muted:'#2e3d5c'};
+
+// ── UTILS ────────────────────────────────────
+function useClock(){
+  const [t,setT]=useState('');
+  useEffect(()=>{const i=setInterval(()=>setT(new Date().toLocaleTimeString('en-GB',{hour12:false})),1000);return()=>clearInterval(i);},[]);
+  return t;
+}
+function useApi(url){
+  const [data,setData]=useState(null);
+  useEffect(()=>{if(!url)return;fetch(`${API}${url}`).then(r=>r.json()).then(setData).catch(()=>{});},[url]);
+  return data;
+}
+
+// ── SHARED UI ────────────────────────────────
+const Spin=()=><div style={{width:14,height:14,border:'2px solid rgba(0,229,255,0.15)',borderTopColor:C.cyan,borderRadius:'50%',animation:'spin 0.65s linear infinite',display:'inline-block'}}/>;
+
+const Toast=({msg,type})=>{
+  const c={ok:C.green,err:C.red,info:C.cyan}[type]||C.cyan;
+  return <div style={{position:'fixed',bottom:24,right:24,zIndex:999,background:C.card,border:`1px solid ${C.border2}`,borderLeft:`3px solid ${c}`,borderRadius:8,padding:'11px 18px',fontFamily:'JetBrains Mono',fontSize:10,color:c,boxShadow:'0 20px 60px rgba(0,0,0,0.6)',animation:'fadeUp 0.3s cubic-bezier(0.16,1,0.3,1) both',maxWidth:280}}>{msg}</div>;
+};
+
+const Badge=({d})=>{
+  const s={allow:{bg:'rgba(0,255,157,0.1)',c:C.green,b:'rgba(0,255,157,0.2)'},escalate:{bg:'rgba(255,200,64,0.1)',c:C.amber,b:'rgba(255,200,64,0.2)'},deny:{bg:'rgba(255,63,91,0.1)',c:C.red,b:'rgba(255,63,91,0.2)'}}[d]||{bg:'rgba(0,229,255,0.1)',c:C.cyan,b:'rgba(0,229,255,0.2)'};
+  return <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 9px',borderRadius:4,background:s.bg,color:s.c,border:`1px solid ${s.b}`,fontFamily:'JetBrains Mono',fontSize:9,fontWeight:700,letterSpacing:'1.5px',textTransform:'uppercase'}}>● {d}</span>;
+};
+
+const StatCard=({label,value,sub,accent=C.cyan,icon})=>(
+  <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:'18px 20px',position:'relative',overflow:'hidden',borderTop:`2px solid ${accent}`}}>
+    {icon&&<div style={{position:'absolute',right:14,bottom:10,fontSize:30,opacity:0.04}}>{icon}</div>}
+    <div style={{fontFamily:'JetBrains Mono',fontSize:8,letterSpacing:'2.5px',textTransform:'uppercase',color:C.text2,marginBottom:8}}>{label}</div>
+    <div style={{fontFamily:'Orbitron',fontSize:28,fontWeight:700,lineHeight:1,color:accent,marginBottom:5}}>{value||'—'}</div>
+    <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.muted}}>{sub||''}</div>
+  </div>
+);
+
+const Card=({title,children,action,style:s={}})=>(
+  <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:'hidden',marginBottom:18,...s}}>
+    {title&&<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'13px 18px',borderBottom:`1px solid ${C.border}`,background:'rgba(0,0,0,0.2)'}}>
+      <div style={{fontFamily:'JetBrains Mono',fontSize:10,fontWeight:600,letterSpacing:'2px',textTransform:'uppercase',color:C.text,display:'flex',alignItems:'center',gap:8}}>
+        <div style={{width:5,height:5,borderRadius:'50%',background:C.cyan}}/>{title}</div>
+      {action}
+    </div>}
+    <div style={{padding:18}}>{children}</div>
+  </div>
+);
+
+const Gauge=({label,value=0,color=C.cyan})=>(
+  <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
+    <div style={{fontFamily:'JetBrains Mono',fontSize:8,letterSpacing:'1.5px',textTransform:'uppercase',color:C.text2,minWidth:90}}>{label}</div>
+    <div style={{flex:1,height:5,background:C.muted,borderRadius:3,overflow:'hidden'}}>
+      <div style={{height:'100%',width:`${Math.min(value*100,100).toFixed(0)}%`,background:`linear-gradient(90deg,${color},${color}88)`,borderRadius:3,transition:'width 0.8s cubic-bezier(0.16,1,0.3,1)'}}/>
+    </div>
+    <div style={{fontFamily:'Orbitron',fontSize:11,fontWeight:700,color,minWidth:44,textAlign:'right'}}>{value.toFixed(3)}</div>
+  </div>
+);
+
+const ShapBar=({name,value=0,magnitude=0,maxMag=1})=>{
+  const pct=Math.max((magnitude/maxMag)*100,2);
+  const pos=value>0;
+  return <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+    <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.text2,minWidth:130,flexShrink:0}}>{name}</div>
+    <div style={{flex:1,height:16,background:C.muted,borderRadius:3,overflow:'hidden'}}>
+      <div style={{height:'100%',width:`${pct}%`,background:pos?'rgba(255,63,91,0.6)':'rgba(0,255,157,0.6)',borderRadius:3,transition:'width 0.7s cubic-bezier(0.16,1,0.3,1)'}}/>
+    </div>
+    <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:pos?C.red:C.green,minWidth:54,textAlign:'right'}}>{value>0?'+':''}{value.toFixed(4)}</div>
+  </div>;
+};
+
+// ── DONUT CHART (SVG) ──────────────────────
+function DonutChart({allow=0,escalate=0,deny=0}){
+  const total=allow+escalate+deny||1;
+  const r=55,cx=65,cy=65,sw=14,circ=2*Math.PI*r;
+  const segs=[{v:allow/total,c:C.green},{v:escalate/total,c:C.amber},{v:deny/total,c:C.red}];
+  let off=0;
+  return <svg width={130} height={130} viewBox="0 0 130 130">
+    <circle cx={cx} cy={cy} r={r} fill="none" stroke={C.border} strokeWidth={sw}/>
+    {segs.map((s,i)=>{const dash=s.v*circ,gap=circ-dash,el=<circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={s.c} strokeWidth={sw} strokeDasharray={`${dash} ${gap}`} strokeDashoffset={-off*circ} strokeLinecap="round" opacity={0.85}/>;off+=s.v;return el;})}
+    <text x={cx} y={cy-5} textAnchor="middle" fill={C.text} fontSize={18} fontFamily="Orbitron" fontWeight={700}>{total}</text>
+    <text x={cx} y={cy+11} textAnchor="middle" fill={C.text2} fontSize={7} fontFamily="JetBrains Mono" letterSpacing={2}>TOTAL</text>
+  </svg>;
+}
+
+// ── SPARKLINE (SVG) ────────────────────────
+function SparkLine({data=[],color=C.cyan,h=50}){
+  if(data.length<2)return null;
+  const w=300,max=Math.max(...data,0.01);
+  const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-(v/max)*h*0.85}`).join(' ');
+  return <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color}/><stop offset="100%" stopColor={color} stopOpacity={0}/></linearGradient></defs>
+    <polyline points={`0,${h} ${pts} ${w},${h}`} fill="url(#sg)" opacity={0.12}/>
+    <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>;
+}
+
+// ════════════════════════════════════════════
+// LANDING PAGE
+// ════════════════════════════════════════════
+function Landing({onEnter}){
+  const canvasRef=useRef(null);
+  const [ph,setPh]=useState(0);
+  const [exit,setExit]=useState(false);
+
+  useEffect(()=>{
+    [100,400,700,1000,1300].forEach((t,i)=>setTimeout(()=>setPh(i+1),t));
+  },[]);
+
+  useEffect(()=>{
+    const canvas=canvasRef.current;if(!canvas)return;
+    const ctx=canvas.getContext('2d');let W,H,pts=[],raf;
+    const resize=()=>{W=canvas.width=canvas.offsetWidth;H=canvas.height=canvas.offsetHeight;};
+    resize();window.addEventListener('resize',resize);
+    for(let i=0;i<100;i++)pts.push({x:Math.random()*3000,y:Math.random()*2000,vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.25,r:Math.random()*1.4+.3,a:Math.random()*.5+.1,t:Math.random()>.7?1:0});
+    const draw=()=>{
+      ctx.clearRect(0,0,W,H);
+      ctx.strokeStyle='rgba(0,229,255,0.025)';ctx.lineWidth=1;
+      for(let x=0;x<W;x+=48){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+      for(let y=0;y<H;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+      pts.forEach((p,i)=>{
+        p.x+=p.vx;p.y+=p.vy;
+        if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;
+        pts.slice(i+1,i+7).forEach(q=>{const dx=p.x-q.x,dy=p.y-q.y,d=Math.hypot(dx,dy);
+          if(d<110){ctx.strokeStyle=`rgba(0,229,255,${.04*(1-d/110)})`;ctx.lineWidth=.4;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();}});
+        if(p.t){ctx.save();ctx.translate(p.x,p.y);ctx.rotate(Math.PI/4);ctx.fillStyle=`rgba(0,229,255,${p.a*.5})`;const s=p.r*2.5;ctx.fillRect(-s/2,-s/2,s,s);ctx.restore();}
+        else{ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(0,229,255,${p.a})`;ctx.fill();}
+      });
+      raf=requestAnimationFrame(draw);
+    };
+    draw();
+    return()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',resize);};
+  },[]);
+
+  const go=()=>{setExit(true);setTimeout(onEnter,700);};
+  const vis=(p)=>({opacity:ph>=p?1:0,transform:ph>=p?'translateY(0)':'translateY(16px)',transition:'opacity .6s ease, transform .6s cubic-bezier(0.16,1,0.3,1)'});
+
+  return <div style={{position:'fixed',inset:0,zIndex:500,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',overflow:'hidden',background:C.bg,opacity:exit?0:1,transform:exit?'scale(1.03)':'scale(1)',transition:'opacity .7s ease, transform .7s ease'}}>
+    <canvas ref={canvasRef} style={{position:'absolute',inset:0,width:'100%',height:'100%'}}/>
+    <div style={{position:'absolute',width:600,height:600,borderRadius:'50%',background:'radial-gradient(ellipse,rgba(0,229,255,0.07) 0%,transparent 70%)',animation:'glowPulse 4s ease-in-out infinite',pointerEvents:'none'}}/>
+    <div style={{position:'relative',zIndex:2,textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center'}}>
+      <div style={{...vis(1),display:'inline-flex',alignItems:'center',gap:8,padding:'6px 16px',borderRadius:20,border:'1px solid rgba(0,229,255,0.22)',background:'rgba(0,229,255,0.06)',fontFamily:'JetBrains Mono',fontSize:9,letterSpacing:'3px',textTransform:'uppercase',color:'#00b8d9',marginBottom:28}}>
+        <div style={{width:5,height:5,borderRadius:'50%',background:C.green,animation:'pulse 2s ease-in-out infinite'}}/>ML · Agentic AI Security · Access Control
+      </div>
+      <div style={{...vis(2),fontFamily:'Orbitron',fontWeight:900,letterSpacing:'.08em',lineHeight:1,fontSize:'clamp(72px,13vw,148px)',background:'linear-gradient(135deg,#fff 10%,#00e5ff 55%,#a855f7 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',filter:'drop-shadow(0 0 40px rgba(0,229,255,0.25))',marginBottom:16,animation:'glowPulse 5s ease-in-out infinite'}}>PRISM</div>
+      <div style={{...vis(3),width:160,height:1,background:'linear-gradient(90deg,transparent,#00e5ff,transparent)',margin:'0 auto 20px'}}/>
+      <div style={{...vis(3),fontFamily:'JetBrains Mono',fontSize:'clamp(9px,1.3vw,12px)',letterSpacing:'3px',textTransform:'uppercase',color:C.text2,marginBottom:10}}>
+        <span style={{color:C.cyan}}>P</span>ermission&nbsp;&nbsp;
+        <span style={{color:C.cyan}}>R</span>isk&nbsp;&nbsp;
+        <span style={{color:C.cyan}}>I</span>ntelligence&nbsp;&nbsp;
+        <span style={{color:C.cyan}}>S</span>ystem for Agentic&nbsp;&nbsp;
+        <span style={{color:C.cyan}}>M</span>odels
+      </div>
+      <p style={{...vis(4),fontFamily:'Syne',fontSize:'clamp(13px,1.8vw,17px)',fontWeight:400,color:C.text2,maxWidth:500,lineHeight:1.75,marginBottom:50}}>
+        A human-centered, explainable ML framework that&nbsp;
+        <strong style={{color:C.text,fontWeight:700}}>scores, explains,</strong> and&nbsp;
+        <strong style={{color:C.text,fontWeight:700}}>controls</strong>&nbsp;every action an AI agent attempts — in real time.
+      </p>
+      <button onClick={go} style={{...vis(5),position:'relative',overflow:'hidden',display:'inline-flex',alignItems:'center',gap:16,padding:'17px 46px',borderRadius:4,background:'transparent',border:`1px solid ${C.cyan}`,color:C.cyan,fontFamily:'Orbitron',fontSize:11,fontWeight:700,letterSpacing:'4px',textTransform:'uppercase',cursor:'pointer',outline:'none',boxShadow:'0 0 30px rgba(0,229,255,0.08)',transition:'all .3s'}}
+        onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 0 60px rgba(0,229,255,0.25)';e.currentTarget.style.color='#fff';}}
+        onMouseLeave={e=>{e.currentTarget.style.boxShadow='0 0 30px rgba(0,229,255,0.08)';e.currentTarget.style.color=C.cyan;}}>
+        Enter Dashboard <span style={{fontSize:18}}>→</span>
+      </button>
+    </div>
+    <div style={{position:'absolute',bottom:0,left:0,right:0,display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 40px',borderTop:`1px solid ${C.border}`,opacity:ph>=5?1:0,transition:'opacity 1s ease 1.5s'}}>
+      {['XGBoost Classifier','SHAP Explainability','Human-in-the-Loop','IsolationForest','v1.0.0 · PRISM'].map((t,i)=>(
+        <div key={i} style={{fontFamily:'JetBrains Mono',fontSize:8,letterSpacing:'2px',textTransform:'uppercase',color:C.muted,display:'flex',alignItems:'center',gap:7}}>
+          {(i===0||i===4)&&<div style={{width:4,height:4,borderRadius:'50%',background:C.green,animation:'pulse 2s infinite'}}/>}{t}
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
+// ════════════════════════════════════════════
+// SIDEBAR
+// ════════════════════════════════════════════
+function Sidebar({page,setPage,isOnline,total}){
+  const nav=[
+    {id:'dashboard',icon:'◈',label:'Dashboard',badge:total||null,section:'Core'},
+    {id:'llm',icon:'⬡',label:'LLM Interface',tag:'AI',section:null},
+    {id:'predict',icon:'◎',label:'Predict',section:null},
+    {id:'history',icon:'≡',label:'History',section:'Analysis'},
+    {id:'analytics',icon:'◐',label:'Analytics',section:null},
+    {id:'apidocs',icon:'⊞',label:'API Reference',section:'Developer'},
+  ];
+  return <aside style={{position:'fixed',top:0,left:0,width:254,height:'100vh',background:C.surface,borderRight:`1px solid ${C.border}`,display:'flex',flexDirection:'column',zIndex:100,boxShadow:'8px 0 50px rgba(0,0,0,0.5)'}}>
+    <div style={{padding:'26px 22px 20px',borderBottom:`1px solid ${C.border}`}}>
+      <div style={{display:'flex',alignItems:'center',gap:11,marginBottom:4}}>
+        <div style={{width:32,height:32,flexShrink:0,position:'relative'}}>
+          <div style={{position:'absolute',inset:0,background:'linear-gradient(135deg,#00e5ff,#a855f7)',clipPath:'polygon(50% 0%,100% 50%,50% 100%,0% 50%)',animation:'glowPulse 3.5s ease-in-out infinite'}}/>
+        </div>
+        <div style={{fontFamily:'Orbitron',fontSize:20,fontWeight:900,letterSpacing:'4px',background:'linear-gradient(135deg,#fff,#00e5ff)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>PRISM</div>
+      </div>
+      <div style={{fontFamily:'JetBrains Mono',fontSize:8,color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginLeft:43,lineHeight:1.7}}>Permission Risk Intelligence<br/>System for Agentic Models</div>
+    </div>
+    <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 22px',background:isOnline?'rgba(0,255,157,0.05)':'rgba(255,63,91,0.05)',borderBottom:`1px solid ${C.border}`,fontFamily:'JetBrains Mono',fontSize:9,letterSpacing:'1.5px',color:isOnline?C.green:C.red,transition:'all .4s'}}>
+      <div style={{width:6,height:6,borderRadius:'50%',flexShrink:0,background:isOnline?C.green:C.red,animation:isOnline?'pulse 2s infinite':'none'}}/>
+      {isOnline?'Online · Models Loaded':'Backend Offline'}
+    </div>
+    <nav style={{flex:1,padding:'12px 10px',display:'flex',flexDirection:'column',gap:2,overflowY:'auto'}}>
+      {nav.map((item)=>(
+        <React.Fragment key={item.id}>
+          {item.section&&<div style={{fontFamily:'JetBrains Mono',fontSize:8,letterSpacing:'2.5px',textTransform:'uppercase',color:C.muted,padding:'12px 12px 5px'}}>{item.section}</div>}
+          <div onClick={()=>setPage(item.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 13px',borderRadius:6,cursor:'pointer',fontFamily:'JetBrains Mono',fontSize:11,fontWeight:500,color:page===item.id?C.cyan:C.text2,background:page===item.id?'rgba(0,229,255,0.07)':'transparent',border:`1px solid ${page===item.id?'rgba(0,229,255,0.15)':'transparent'}`,borderLeft:`3px solid ${page===item.id?C.cyan:'transparent'}`,transition:'all .18s',userSelect:'none'}}
+            onMouseEnter={e=>{if(page!==item.id)e.currentTarget.style.background='rgba(0,229,255,0.04)';}}
+            onMouseLeave={e=>{if(page!==item.id)e.currentTarget.style.background='transparent';}}>
+            <span style={{fontSize:13,width:16,textAlign:'center',flexShrink:0}}>{item.icon}</span>
+            <span style={{flex:1}}>{item.label}</span>
+            {item.badge>0&&<span style={{background:C.red,color:'#fff',fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:10,minWidth:18,textAlign:'center'}}>{item.badge}</span>}
+            {item.tag&&<span style={{background:'rgba(0,255,157,0.1)',color:C.green,fontSize:8,fontWeight:700,letterSpacing:'1px',padding:'1px 6px',borderRadius:3,border:'1px solid rgba(0,255,157,0.2)'}}>{item.tag}</span>}
+          </div>
+        </React.Fragment>
+      ))}
+    </nav>
+    <div style={{padding:'14px 22px',borderTop:`1px solid ${C.border}`,fontFamily:'JetBrains Mono',fontSize:9,color:C.muted,lineHeight:2}}>PRISM v1.0.0 · XGBoost · SHAP<br/>FastAPI · SQLite · React</div>
+  </aside>;
+}
+
+// ════════════════════════════════════════════
+// DASHBOARD
+// ════════════════════════════════════════════
+function Dashboard(){
+  const [stats,setStats]=useState(null);const [feed,setFeed]=useState([]);const [ar,setAr]=useState(true);const [sel,setSel]=useState(null);const [loading,setLoading]=useState(true);
+  const load=useCallback(async()=>{
+    try{const [sr,hr]=await Promise.all([fetch(`${API}/stats`),fetch(`${API}/history?limit=12`)]);
+      setStats(await sr.json());setFeed((await hr.json()).decisions||[]);setLoading(false);}catch{setLoading(false);}
+  },[]);
+  useEffect(()=>{load();},[load]);
+  useEffect(()=>{if(!ar)return;const t=setInterval(load,5000);return()=>clearInterval(t);},[ar,load]);
+  const t=stats?.total_decisions||0,a=stats?.decision_breakdown?.allow||0,e=stats?.decision_breakdown?.escalate||0,d=stats?.decision_breakdown?.deny||0;
+  return <div className="page-enter">
+    <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:16}}>
+      <StatCard label="Total Decisions" value={t} sub="all time" accent={C.cyan} icon="◈"/>
+      <StatCard label="Allowed" value={a} sub={t?`${(a/t*100).toFixed(1)}% of total`:'—'} accent={C.green} icon="✓"/>
+      <StatCard label="Escalated" value={e} sub={t?`${(e/t*100).toFixed(1)}% of total`:'—'} accent={C.amber} icon="⚠"/>
+      <StatCard label="Denied" value={d} sub={t?`${(d/t*100).toFixed(1)}% of total`:'—'} accent={C.red} icon="✕"/>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:18}}>
+      <StatCard label="Avg Risk Score" value={stats?.avg_risk_score?.toFixed(3)||'—'} sub="0=safe · 1=critical" accent={C.cyan}/>
+      <StatCard label="Override Rate" value={stats?.override_rate!=null?`${(stats.override_rate*100).toFixed(1)}%`:'—'} sub="human corrections" accent={C.violet}/>
+      <StatCard label="Anomalies" value={stats?.anomaly_count??'—'} sub="IsolationForest" accent={C.red}/>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'200px 1fr',gap:16}}>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:18,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+        <div style={{fontFamily:'JetBrains Mono',fontSize:8,letterSpacing:'2px',textTransform:'uppercase',color:C.text2,marginBottom:14}}>Distribution</div>
+        <DonutChart allow={a} escalate={e} deny={d}/>
+        <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:12,width:'100%'}}>
+          {[{l:'Allow',c:C.green,v:a},{l:'Escalate',c:C.amber,v:e},{l:'Deny',c:C.red,v:d}].map(x=>(
+            <div key={x.l} style={{display:'flex',alignItems:'center',gap:7,fontFamily:'JetBrains Mono',fontSize:9}}>
+              <div style={{width:6,height:6,borderRadius:2,background:x.c,flexShrink:0}}/><span style={{color:C.text2,flex:1}}>{x.l}</span><span style={{color:C.text,fontWeight:600}}>{x.v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <Card title="Live Decision Feed" action={
+        <div style={{display:'flex',gap:10,alignItems:'center'}}>
+          <label style={{display:'flex',alignItems:'center',gap:7,cursor:'pointer',fontFamily:'JetBrains Mono',fontSize:9,color:C.text2,userSelect:'none'}}>
+            <div onClick={()=>setAr(v=>!v)} style={{width:28,height:15,borderRadius:8,background:ar?C.cyan:C.muted,cursor:'pointer',position:'relative',transition:'background .2s'}}>
+              <div style={{position:'absolute',top:2,left:ar?13:2,width:11,height:11,borderRadius:'50%',background:'#fff',transition:'left .2s'}}/>
+            </div>AUTO
+          </label>
+          <button onClick={load} style={{background:'transparent',border:`1px solid ${C.border}`,color:C.text2,padding:'4px 10px',borderRadius:5,fontFamily:'JetBrains Mono',fontSize:9,cursor:'pointer'}}>↻</button>
+        </div>
+      }>
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse'}}>
+            <thead><tr>{['#','Action','Role','Risk','Decision','Anomaly','Time'].map(h=>(
+              <th key={h} style={{fontFamily:'JetBrains Mono',fontSize:8,letterSpacing:'2px',textTransform:'uppercase',color:C.text2,padding:'8px 12px',textAlign:'left',borderBottom:`1px solid ${C.border}`,background:'rgba(0,0,0,0.15)'}}>{h}</th>
+            ))}</tr></thead>
+            <tbody>
+              {!feed.length?<tr><td colSpan={7}><div style={{textAlign:'center',padding:40,fontFamily:'JetBrains Mono',fontSize:11,color:C.muted}}>No decisions yet. Submit a request in Predict or LLM Interface.</div></td></tr>:
+              feed.map(row=>{const rc=row.risk_score<.35?C.green:row.risk_score<.65?C.amber:C.red;const ts=new Date(row.timestamp).toLocaleTimeString('en-GB',{hour12:false});
+                return <tr key={row.id} onClick={()=>setSel(row)} style={{cursor:'pointer',transition:'background .12s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,229,255,0.03)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                  <td style={{padding:'10px 12px',fontFamily:'JetBrains Mono',fontSize:9,color:C.muted}}>#{row.id}</td>
+                  <td style={{padding:'10px 12px'}}><code style={{color:C.cyan,fontSize:9,fontFamily:'JetBrains Mono'}}>{row.action_type}</code></td>
+                  <td style={{padding:'10px 12px',fontFamily:'JetBrains Mono',fontSize:9}}>{row.user_role}</td>
+                  <td style={{padding:'10px 12px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <div style={{width:60,height:3,background:C.muted,borderRadius:2,overflow:'hidden'}}>
+                        <div style={{height:'100%',width:`${(row.risk_score*100).toFixed(0)}%`,background:rc,borderRadius:2}}/>
+                      </div>
+                      <span style={{fontFamily:'JetBrains Mono',fontSize:9,color:rc}}>{row.risk_score?.toFixed(3)}</span>
+                    </div>
+                  </td>
+                  <td style={{padding:'10px 12px'}}><Badge d={row.decision}/></td>
+                  <td style={{padding:'10px 12px',textAlign:'center'}}>{row.is_anomalous?<span style={{color:C.red}}>🚨</span>:<span style={{color:C.muted}}>—</span>}</td>
+                  <td style={{padding:'10px 12px',fontFamily:'JetBrains Mono',fontSize:9,color:C.muted}}>{ts}</td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+    {sel&&<RowModal row={sel} onClose={()=>setSel(null)}/>}
+  </div>;
+}
+
+// ════════════════════════════════════════════
+// LLM INTERFACE
+// ════════════════════════════════════════════
+const LLM_P={code_exec:['execut','run code','script'],db_write:['database write','db write','insert','drop'],db_read:['database read','query','select'],file_write:['write file','edit file'],file_read:['read file','open file'],api_call:['api','endpoint','fetch'],email_send:['email','send mail'],web_search:['search','browse','lookup']};
+const ROLE_P={admin:['admin'],developer:['developer','dev','engineer'],user:['user','member'],guest:['guest','unknown','anonymous']};
+const SENS_P={'3':['pii','medical','patient','financial','sensitive'],'2':['confidential','secret'],'1':['internal','corporate'],'0':['public']};
+
+function LLMInterface(){
+  const [msgs,setMsgs]=useState([{role:'system',text:'Hello. I am **PRISM** — your Permission Risk Intelligence System. Describe any agent action in natural language and I will assess its risk and explain my reasoning.',time:new Date().toLocaleTimeString()}]);
+  const [inp,setInp]=useState('');const [loading,setLoading]=useState(false);const [result,setResult]=useState(null);const [did,setDid]=useState(null);const [toast,setToast]=useState(null);
+  const areaRef=useRef(null);
+  const QUICK=['Guest executing code on PII data','Admin reading public files','User writing to medical database','50 API calls in one hour','Developer web search during task'];
+  useEffect(()=>{if(areaRef.current)areaRef.current.scrollTop=areaRef.current.scrollHeight;},[msgs,loading]);
+  const showToast=(m,t)=>{setToast({msg:m,type:t});setTimeout(()=>setToast(null),3000);};
+  const parseNL=txt=>{
+    const t=txt.toLowerCase();
+    let action='api_call',role='user',sensitivity=1,task_alignment=.75,request_frequency=8,time_of_day=10;
+    for(const[a,kws]of Object.entries(LLM_P))if(kws.some(k=>t.includes(k))){action=a;break;}
+    for(const[r,kws]of Object.entries(ROLE_P))if(kws.some(k=>t.includes(k))){role=r;break;}
+    for(const[s,kws]of Object.entries(SENS_P))if(kws.some(k=>t.includes(k))){sensitivity=parseInt(s);break;}
+    if(t.includes('50')||t.includes('flood'))request_frequency=52;
+    if(t.includes('unrelated')||t.includes('suspicious'))task_alignment=.1;
+    if(t.includes('routine')||t.includes('legitimate'))task_alignment=.92;
+    return{action_type:action,user_role:role,data_sensitivity:sensitivity,task_alignment,request_frequency,time_of_day};
+  };
+  const send=async(txt)=>{
+    if(!txt.trim()||loading)return;
+    setMsgs(m=>[...m,{role:'user',text:txt,time:new Date().toLocaleTimeString()}]);setInp('');setLoading(true);
+    const payload=parseNL(txt);
+    try{
+      const r=await fetch(`${API}/predict`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok)throw new Error();
+      const data=await r.json();setDid(data.decision_id);setResult(data);
+      const dc={allow:'✅ ALLOWED',escalate:'⚠️ ESCALATED',deny:'🚫 DENIED'}[data.decision];
+      setMsgs(m=>[...m,{role:'system',text:`Assessment complete — Decision **#${data.decision_id}**\n\nVerdict: **${dc}**\nRisk: ${data.risk_score.toFixed(4)} · Confidence: ${(data.confidence*100).toFixed(1)}%${data.is_anomalous?' · 🚨 ANOMALY':''}\n\nParsed: **${payload.action_type}** by **${payload.user_role}** on sensitivity-${payload.data_sensitivity} data.${data.explanation?.[0]?`\nPrimary factor: **${data.explanation[0].feature}** → ${data.explanation[0].direction}`:''}`,time:new Date().toLocaleTimeString()}]);
+    }catch{setMsgs(m=>[...m,{role:'system',text:'⚠️ Backend unreachable. Please start uvicorn on port 8000.',time:new Date().toLocaleTimeString()}]);}
+    setLoading(false);
+  };
+  const override=async(dec)=>{
+    if(!did){showToast('No active decision','err');return;}
+    try{await fetch(`${API}/feedback`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision_id:did,override_decision:dec,reason:'LLM override'})});showToast(`Override #${did} → ${dec.toUpperCase()}`,'ok');}
+    catch{showToast('Override failed','err');}
+  };
+  const fmtText=txt=>txt.split('\n').map((line,i)=>{
+    const parts=line.split(/\*\*(.*?)\*\*/g);
+    return <div key={i} style={{marginBottom:2}}>{parts.map((p,j)=>j%2===1?<strong key={j} style={{color:C.text,fontWeight:600}}>{p}</strong>:p)}</div>;
+  });
+  return <div className="page-enter" style={{display:'grid',gridTemplateColumns:'1.3fr 1fr',gap:18}}>
+    <div>
+      <Card title="PRISM Agent Interface" action={<button onClick={()=>{setMsgs([{role:'system',text:'Chat cleared.',time:new Date().toLocaleTimeString()}]);setResult(null);setDid(null);}} style={{background:'transparent',border:`1px solid ${C.border}`,color:C.text2,padding:'4px 10px',borderRadius:5,fontFamily:'JetBrains Mono',fontSize:9,cursor:'pointer'}}>✕ Clear</button>}>
+        <div ref={areaRef} style={{minHeight:280,maxHeight:360,overflowY:'auto',marginBottom:14,display:'flex',flexDirection:'column',gap:0}}>
+          {msgs.map((m,i)=><div key={i} className="msg-enter" style={{display:'flex',gap:11,padding:'10px 0',borderBottom:'1px solid rgba(22,32,58,0.4)'}}>
+            <div style={{width:28,height:28,borderRadius:6,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:11,color:'#fff',fontFamily:'Orbitron',background:m.role==='system'?'linear-gradient(135deg,#00e5ff,#a855f7)':'linear-gradient(135deg,#a855f7,#ff3f5b)'}}>{m.role==='system'?'P':'U'}</div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'JetBrains Mono',fontSize:8,letterSpacing:'1.5px',textTransform:'uppercase',color:C.text2,marginBottom:4}}>{m.role==='system'?'PRISM System':'You'}</div>
+              <div style={{fontFamily:'JetBrains Mono',fontSize:10,lineHeight:1.75,color:C.text}}>{fmtText(m.text)}</div>
+              <div style={{fontFamily:'JetBrains Mono',fontSize:8,color:C.muted,marginTop:3}}>{m.time}</div>
+            </div>
+          </div>)}
+          {loading&&<div style={{display:'flex',gap:11,padding:'10px 0'}}>
+            <div style={{width:28,height:28,borderRadius:6,flexShrink:0,background:'linear-gradient(135deg,#00e5ff,#a855f7)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Orbitron',fontWeight:700,fontSize:11,color:'#fff'}}>P</div>
+            <div style={{paddingTop:6}}><Spin/></div>
+          </div>}
+        </div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:12}}>
+          {QUICK.map(q=><div key={q} onClick={()=>send(q)} style={{padding:'4px 11px',borderRadius:20,border:`1px solid ${C.border}`,fontFamily:'JetBrains Mono',fontSize:8,color:C.text2,cursor:'pointer',transition:'all .15s',whiteSpace:'nowrap'}} onMouseEnter={e=>{e.currentTarget.style.borderColor='rgba(0,229,255,0.3)';e.currentTarget.style.color=C.cyan;e.currentTarget.style.background='rgba(0,229,255,0.06)';}} onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.color=C.text2;e.currentTarget.style.background='transparent';}}>{q}</div>)}
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <textarea value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send(inp);}}} placeholder="Describe an agent action..." rows={2} style={{flex:1,background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,padding:'10px 13px',color:C.text,fontFamily:'JetBrains Mono',fontSize:11,outline:'none',resize:'none',lineHeight:1.6}}/>
+          <button onClick={()=>send(inp)} disabled={loading} style={{width:44,borderRadius:6,background:`linear-gradient(135deg,${C.cyan},#009bcc)`,border:'none',color:'#000',fontSize:18,cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',opacity:loading?.5:1}}>→</button>
+        </div>
+      </Card>
+    </div>
+    <div>
+      <Card title="Current Assessment">
+        {result?<div>
+          <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:18}}>
+            <div style={{width:52,height:52,borderRadius:10,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,background:{allow:'rgba(0,255,157,0.1)',escalate:'rgba(255,200,64,0.1)',deny:'rgba(255,63,91,0.1)'}[result.decision]}}>{({allow:'✓',escalate:'⚠',deny:'✕'})[result.decision]}</div>
+            <div>
+              <div style={{fontFamily:'Orbitron',fontSize:24,fontWeight:900,letterSpacing:'3px',color:{allow:C.green,escalate:C.amber,deny:C.red}[result.decision]}}>{result.decision.toUpperCase()}</div>
+              <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.muted,marginTop:3}}>#{result.decision_id} · {result.is_anomalous?'🚨 Anomaly':'Normal'}</div>
+            </div>
+          </div>
+          <Gauge label="Risk Score" value={result.risk_score} color={{allow:C.green,escalate:C.amber,deny:C.red}[result.decision]}/>
+          <Gauge label="Confidence" value={result.confidence} color={C.cyan}/>
+          <div style={{marginTop:14}}>
+            <div style={{fontFamily:'JetBrains Mono',fontSize:8,color:C.text2,letterSpacing:'2px',textTransform:'uppercase',marginBottom:10}}>SHAP Factors</div>
+            {(result.explanation||[]).slice(0,5).map((e,i)=>{const maxM=Math.max(...(result.explanation||[]).map(x=>x.magnitude),0.01);return <ShapBar key={i} name={e.feature} value={e.shap_value} magnitude={e.magnitude} maxMag={maxM}/>;})}</div>
+        </div>:<div style={{textAlign:'center',padding:'40px 0',fontFamily:'JetBrains Mono',fontSize:11,color:C.muted}}>Awaiting agent request...</div>}
+      </Card>
+      <Card title="Human Override Panel">
+        <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.text2,marginBottom:14,lineHeight:1.8}}>Review the model's decision and override if you disagree. All overrides are logged for audit.</div>
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {[{label:'Allow Action',desc:'Grant permission',dec:'allow',c:C.green,bg:'rgba(0,255,157,0.08)',b:'rgba(0,255,157,0.2)',icon:'✓'},{label:'Escalate for Review',desc:'Requires approval',dec:'escalate',c:C.amber,bg:'rgba(255,200,64,0.08)',b:'rgba(255,200,64,0.2)',icon:'⚠'},{label:'Deny Access',desc:'Block this action',dec:'deny',c:C.red,bg:'rgba(255,63,91,0.08)',b:'rgba(255,63,91,0.2)',icon:'✕'}].map(({label,desc,dec,c,bg,b,icon})=>(
+            <button key={dec} onClick={()=>override(dec)} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',borderRadius:7,background:bg,border:`1px solid ${b}`,color:c,cursor:'pointer',textAlign:'left',transition:'all .15s',width:'100%'}} onMouseEnter={e=>e.currentTarget.style.opacity='.8'} onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
+              <span style={{fontSize:18}}>{icon}</span>
+              <div><div style={{fontFamily:'JetBrains Mono',fontSize:10,fontWeight:700,letterSpacing:'1px'}}>{label}</div><div style={{fontFamily:'JetBrains Mono',fontSize:8,opacity:.7,marginTop:2}}>{desc}</div></div>
+            </button>
+          ))}
+        </div>
+        <div style={{marginTop:12,padding:10,background:'rgba(0,0,0,0.2)',border:`1px solid ${C.border}`,borderRadius:6}}>
+          <div style={{fontFamily:'JetBrains Mono',fontSize:8,color:C.muted}}>Active Decision ID</div>
+          <div style={{fontFamily:'Orbitron',fontSize:15,color:C.cyan,marginTop:3}}>{did?`#${did}`:'—'}</div>
+        </div>
+      </Card>
+    </div>
+    {toast&&<Toast msg={toast.msg} type={toast.type}/>}
+  </div>;
+}
+
+// ════════════════════════════════════════════
+// PREDICT
+// ════════════════════════════════════════════
+function Predict(){
+  const [form,setForm]=useState({action:'',role:'',sensitivity:0,alignment:80,freq:5,time:10});
+  const [loading,setLoading]=useState(false);const [result,setResult]=useState(null);const [did,setDid]=useState(null);const [toast,setToast]=useState(null);
+  const showToast=(m,t)=>{setToast({msg:m,type:t});setTimeout(()=>setToast(null),3000);};
+  const sel=(id,val)=>setForm(f=>({...f,[id]:val}));
+  const DEMOS=[{action:'code_exec',role:'guest',sensitivity:3,alignment:5,freq:52,time:2},{action:'web_search',role:'developer',sensitivity:0,alignment:95,freq:3,time:10},{action:'db_write',role:'user',sensitivity:2,alignment:55,freq:12,time:14},{action:'api_call',role:'user',sensitivity:1,alignment:70,freq:55,time:3},{action:'file_read',role:'admin',sensitivity:0,alignment:98,freq:2,time:9}];
+  const submit=async()=>{
+    if(!form.action||!form.role){showToast('Select Action and Role','err');return;}
+    setLoading(true);
+    const payload={action_type:form.action,user_role:form.role,data_sensitivity:form.sensitivity,task_alignment:form.alignment/100,request_frequency:form.freq,time_of_day:form.time};
+    try{const r=await fetch(`${API}/predict`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)throw new Error();const data=await r.json();setResult(data);setDid(data.decision_id);showToast(`${data.decision.toUpperCase()} · Risk ${data.risk_score.toFixed(3)}`,'ok');}
+    catch{showToast('Backend offline','err');}setLoading(false);
+  };
+  const override=async(dec)=>{
+    if(!did){showToast('No active decision','err');return;}
+    try{await fetch(`${API}/feedback`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision_id:did,override_decision:dec,reason:'Predict override'})});showToast(`Override → ${dec.toUpperCase()}`,'ok');}
+    catch{showToast('Override failed','err');}
+  };
+  const inputStyle={background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,padding:'9px 12px',color:C.text,fontFamily:'JetBrains Mono',fontSize:11,outline:'none',appearance:'none',WebkitAppearance:'none',width:'100%'};
+  const labelStyle={fontFamily:'JetBrains Mono',fontSize:9,letterSpacing:'2px',textTransform:'uppercase',color:C.text2};
+  return <div className="page-enter">
+    <Card title="Permission Request Analyzer" action={<button onClick={()=>{const d=DEMOS[Math.floor(Math.random()*DEMOS.length)];setForm(d);showToast('Demo loaded','info');}} style={{background:'transparent',border:`1px solid ${C.border}`,color:C.text2,padding:'5px 12px',borderRadius:5,fontFamily:'JetBrains Mono',fontSize:9,cursor:'pointer'}}>⚡ Demo</button>}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:18}}>
+        <div style={{display:'flex',flexDirection:'column',gap:7}}><label style={labelStyle}>Action Type</label>
+          <select value={form.action} onChange={e=>sel('action',e.target.value)} style={inputStyle}>
+            <option value="">Select action...</option>
+            {['file_read','file_write','api_call','code_exec','db_read','db_write','web_search','email_send'].map(v=><option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:7}}><label style={labelStyle}>User Role</label>
+          <select value={form.role} onChange={e=>sel('role',e.target.value)} style={inputStyle}>
+            <option value="">Select role...</option>
+            {['guest','user','developer','admin'].map(v=><option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:7}}><label style={labelStyle}>Data Sensitivity</label>
+          <select value={form.sensitivity} onChange={e=>sel('sensitivity',Number(e.target.value))} style={inputStyle}>
+            {[{v:0,l:'0 — Public'},{v:1,l:'1 — Internal'},{v:2,l:'2 — Confidential'},{v:3,l:'3 — PII / Medical'}].map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+          </select>
+        </div>
+        {[{id:'time',label:'Time of Day',min:0,max:23,fmt:v=>`${v}:00`},{id:'alignment',label:'Task Alignment',min:0,max:100,fmt:v=>(v/100).toFixed(2)},{id:'freq',label:'Request Frequency / hr',min:1,max:60,fmt:v=>v}].map(({id,label,min,max,fmt})=>(
+          <div key={id} style={{display:'flex',flexDirection:'column',gap:7}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <label style={labelStyle}>{label}</label>
+              <span style={{fontFamily:'Orbitron',fontSize:12,fontWeight:700,color:C.cyan}}>{fmt(form[id])}</span>
+            </div>
+            <input type="range" min={min} max={max} value={form[id]} onChange={e=>sel(id,Number(e.target.value))} style={{width:'100%',accentColor:C.cyan}}/>
+          </div>
+        ))}
+        <div style={{gridColumn:'1/-1',marginTop:4}}>
+          <button onClick={submit} disabled={loading} style={{width:'100%',padding:13,borderRadius:7,background:`linear-gradient(135deg,${C.cyan},#0099cc)`,border:'none',color:'#000',fontFamily:'JetBrains Mono',fontSize:11,fontWeight:700,letterSpacing:'1.5px',textTransform:'uppercase',cursor:loading?'not-allowed':'pointer',opacity:loading?.5:1,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+            {loading&&<Spin/>}⬡  Analyze Permission Request
+          </button>
+        </div>
+      </div>
+    </Card>
+    {result&&<div style={{background:C.card2,border:`1px solid ${C.border}`,borderTop:`2px solid ${{allow:C.green,escalate:C.amber,deny:C.red}[result.decision]}`,borderRadius:10,padding:24,animation:'scaleIn .35s cubic-bezier(0.16,1,0.3,1) both'}}>
+      <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:22}}>
+        <div style={{width:54,height:54,borderRadius:10,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,background:{allow:'rgba(0,255,157,0.1)',escalate:'rgba(255,200,64,0.1)',deny:'rgba(255,63,91,0.1)'}[result.decision]}}>{({allow:'✓',escalate:'⚠',deny:'✕'})[result.decision]}</div>
+        <div>
+          <div style={{fontFamily:'Orbitron',fontSize:28,fontWeight:900,letterSpacing:'4px',color:{allow:C.green,escalate:C.amber,deny:C.red}[result.decision]}}>{result.decision.toUpperCase()}</div>
+          <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.muted,marginTop:4}}>#{result.decision_id} · {new Date(result.timestamp).toLocaleString()} · Anomaly: {result.is_anomalous?'YES 🚨':'No'}</div>
+        </div>
+      </div>
+      <Gauge label="Risk Score" value={result.risk_score} color={{allow:C.green,escalate:C.amber,deny:C.red}[result.decision]}/>
+      <Gauge label="Confidence" value={result.confidence} color={C.cyan}/>
+      <div style={{marginTop:16,marginBottom:16}}>
+        <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.text2,letterSpacing:'2px',textTransform:'uppercase',marginBottom:10}}>SHAP — Why this decision?</div>
+        {(result.explanation||[]).slice(0,8).map((e,i)=>{const maxM=Math.max(...(result.explanation||[]).map(x=>x.magnitude),0.01);return <ShapBar key={i} name={e.feature} value={e.shap_value} magnitude={e.magnitude} maxMag={maxM}/>;})}</div>
+      <div style={{display:'flex',alignItems:'center',gap:8,padding:'12px 14px',background:'rgba(0,0,0,0.2)',border:`1px solid ${C.border}`,borderRadius:8,flexWrap:'wrap'}}>
+        <span style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.muted,marginRight:4,letterSpacing:'1.5px'}}>OVERRIDE:</span>
+        {['allow','escalate','deny'].map(dec=>{const cs={allow:{bg:'rgba(0,255,157,0.1)',c:C.green,b:'rgba(0,255,157,0.25)',l:'✓ Allow'},escalate:{bg:'rgba(255,200,64,0.1)',c:C.amber,b:'rgba(255,200,64,0.25)',l:'⚠ Escalate'},deny:{bg:'rgba(255,63,91,0.1)',c:C.red,b:'rgba(255,63,91,0.25)',l:'✕ Deny'}}[dec];return <button key={dec} onClick={()=>override(dec)} style={{padding:'5px 13px',borderRadius:5,background:cs.bg,color:cs.c,border:`1px solid ${cs.b}`,fontFamily:'JetBrains Mono',fontSize:9,fontWeight:700,letterSpacing:'1px',cursor:'pointer'}}>{cs.l}</button>;})}
+        <span style={{marginLeft:'auto',fontFamily:'JetBrains Mono',fontSize:9,color:C.muted}}>ID: #{did}</span>
+      </div>
+    </div>}
+    {toast&&<Toast msg={toast.msg} type={toast.type}/>}
+  </div>;
+}
+
+// ════════════════════════════════════════════
+// HISTORY
+// ════════════════════════════════════════════
+function History(){
+  const [all,setAll]=useState([]);const [filter,setFilter]=useState('all');const [sel,setSel]=useState(null);
+  useEffect(()=>{fetch(`${API}/history?limit=100`).then(r=>r.json()).then(d=>setAll(d.decisions||[])).catch(()=>{});},[]);
+  const rows=all.filter(r=>{if(filter==='allow')return r.decision==='allow';if(filter==='escalate')return r.decision==='escalate';if(filter==='deny')return r.decision==='deny';if(filter==='anomaly')return r.is_anomalous;if(filter==='override')return r.is_override;return true;});
+  return <div className="page-enter">
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:18}}>
+      {[{id:'all',l:'All'},{id:'allow',l:'✓ Allow'},{id:'escalate',l:'⚠ Escalate'},{id:'deny',l:'✕ Deny'},{id:'anomaly',l:'🚨 Anomaly'},{id:'override',l:'👤 Overridden'}].map(f=>(
+        <div key={f.id} onClick={()=>setFilter(f.id)} style={{padding:'5px 13px',borderRadius:20,cursor:'pointer',userSelect:'none',fontFamily:'JetBrains Mono',fontSize:9,letterSpacing:'1px',textTransform:'uppercase',border:`1px solid ${filter===f.id?'rgba(0,229,255,0.3)':C.border}`,background:filter===f.id?'rgba(0,229,255,0.08)':'transparent',color:filter===f.id?C.cyan:C.text2,transition:'all .15s'}}>{f.l}</div>
+      ))}
+      <button onClick={()=>fetch(`${API}/history?limit=100`).then(r=>r.json()).then(d=>setAll(d.decisions||[])).catch(()=>{})} style={{marginLeft:'auto',background:'transparent',border:`1px solid ${C.border}`,color:C.text2,padding:'5px 12px',borderRadius:5,fontFamily:'JetBrains Mono',fontSize:9,cursor:'pointer'}}>↻ Refresh</button>
+    </div>
+    <Card title="Decision Log" action={<span style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.muted}}>{rows.length} records</span>}>
+      <div style={{overflowX:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse'}}>
+          <thead><tr>{['#','Time','Action','Role','Risk','Decision','Conf.','Override',''].map(h=><th key={h} style={{fontFamily:'JetBrains Mono',fontSize:8,letterSpacing:'2px',textTransform:'uppercase',color:C.text2,padding:'8px 12px',textAlign:'left',borderBottom:`1px solid ${C.border}`,background:'rgba(0,0,0,0.15)',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead>
+          <tbody>
+            {!rows.length?<tr><td colSpan={9}><div style={{textAlign:'center',padding:40,fontFamily:'JetBrains Mono',fontSize:11,color:C.muted}}>No records match.</div></td></tr>:
+            rows.map(row=>{const rc=row.risk_score<.35?C.green:row.risk_score<.65?C.amber:C.red;const ts=new Date(row.timestamp).toLocaleString('en-GB',{hour12:false,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+              return <tr key={row.id} onClick={()=>setSel(row)} style={{cursor:'pointer',borderBottom:'1px solid rgba(22,32,58,0.4)',transition:'background .12s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(0,229,255,0.03)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                <td style={{padding:'10px 12px',fontFamily:'JetBrains Mono',fontSize:9,color:C.muted}}>#{row.id}</td>
+                <td style={{padding:'10px 12px',fontFamily:'JetBrains Mono',fontSize:9,color:C.muted,whiteSpace:'nowrap'}}>{ts}</td>
+                <td style={{padding:'10px 12px'}}><code style={{color:C.cyan,fontSize:9,fontFamily:'JetBrains Mono'}}>{row.action_type}</code></td>
+                <td style={{padding:'10px 12px',fontFamily:'JetBrains Mono',fontSize:9}}>{row.user_role}</td>
+                <td style={{padding:'10px 12px',fontFamily:'JetBrains Mono',fontSize:9,color:rc}}>{row.risk_score?.toFixed(3)}</td>
+                <td style={{padding:'10px 12px'}}><Badge d={row.decision}/></td>
+                <td style={{padding:'10px 12px',fontFamily:'JetBrains Mono',fontSize:9,color:C.muted}}>{(row.confidence*100).toFixed(1)}%</td>
+                <td style={{padding:'10px 12px',fontFamily:'JetBrains Mono',fontSize:9}}>{row.is_override?<span style={{color:C.amber}}>👤 {row.override_decision?.toUpperCase()}</span>:'—'}</td>
+                <td style={{padding:'10px 12px'}}><button onClick={e=>{e.stopPropagation();setSel(row);}} style={{background:'transparent',border:`1px solid ${C.border}`,color:C.text2,padding:'3px 9px',borderRadius:4,fontFamily:'JetBrains Mono',fontSize:9,cursor:'pointer'}}>View</button></td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+    {sel&&<RowModal row={sel} onClose={()=>setSel(null)}/>}
+  </div>;
+}
+
+// ════════════════════════════════════════════
+// ANALYTICS
+// ════════════════════════════════════════════
+function Analytics(){
+  const [stats,setStats]=useState(null);const [hist,setHist]=useState([]);
+  useEffect(()=>{Promise.all([fetch(`${API}/stats`),fetch(`${API}/history?limit=100`)]).then(([a,b])=>Promise.all([a.json(),b.json()])).then(([s,h])=>{setStats(s);setHist(h.decisions||[]);}).catch(()=>{});},[]);
+  const trend=(stats?.risk_trend||[]).map(t=>t.risk_score);
+  const ac={};hist.forEach(d=>{ac[d.action_type]=(ac[d.action_type]||0)+1;});
+  const actions=Object.entries(ac).sort((a,b)=>b[1]-a[1]);
+  const bins=Array(10).fill(0);hist.forEach(d=>{bins[Math.min(Math.floor(d.risk_score*10),9)]++;});
+  const maxBin=Math.max(...bins,1);
+  const a=stats?.decision_breakdown?.allow||0,e=stats?.decision_breakdown?.escalate||0,d=stats?.decision_breakdown?.deny||0,t=a+e+d||1;
+  return <div className="page-enter">
+    <Card title="Model Information" style={{marginBottom:18}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
+        {[{k:'Model',v:'XGBoost',c:C.cyan},{k:'Features',v:'8'},{k:'Classes',v:'3'},{k:'SHAP',v:'Enabled ✓',c:C.green},{k:'Anomaly',v:'IsolationForest'},{k:'Dataset',v:'5,000 rows'},{k:'Accuracy',v:'~94%',c:C.green},{k:'Version',v:'1.0.0'}].map(({k,v,c})=>(
+          <div key={k} style={{background:'rgba(0,0,0,0.2)',border:`1px solid ${C.border}`,borderRadius:7,padding:'10px 12px'}}>
+            <div style={{fontFamily:'JetBrains Mono',fontSize:8,color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:3}}>{k}</div>
+            <div style={{fontFamily:'JetBrains Mono',fontSize:12,fontWeight:600,color:c||C.text}}>{v}</div>
+          </div>
+        ))}
+      </div>
+    </Card>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:18}}>
+        <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.text2,letterSpacing:'2px',textTransform:'uppercase',marginBottom:14}}>▸ Decision Distribution</div>
+        <div style={{display:'flex',alignItems:'center',gap:20}}>
+          <DonutChart allow={a} escalate={e} deny={d}/>
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {[{l:'Allow',c:C.green,v:a,p:(a/t*100).toFixed(1)},{l:'Escalate',c:C.amber,v:e,p:(e/t*100).toFixed(1)},{l:'Deny',c:C.red,v:d,p:(d/t*100).toFixed(1)}].map(x=>(
+              <div key={x.l}>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <div style={{width:8,height:8,borderRadius:2,background:x.c,flexShrink:0}}/>
+                  <span style={{fontFamily:'JetBrains Mono',fontSize:10,color:C.text2}}>{x.l}</span>
+                </div>
+                <div style={{fontFamily:'Orbitron',fontSize:18,fontWeight:700,color:x.c,marginLeft:16}}>{x.v}</div>
+                <div style={{fontFamily:'JetBrains Mono',fontSize:8,color:C.muted,marginLeft:16}}>{x.p}%</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:18}}>
+        <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.text2,letterSpacing:'2px',textTransform:'uppercase',marginBottom:14}}>▸ Risk Score Trend (Last 20)</div>
+        <SparkLine data={trend} color={C.cyan} h={120}/>
+      </div>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:18}}>
+        <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.text2,letterSpacing:'2px',textTransform:'uppercase',marginBottom:14}}>▸ Decisions by Action Type</div>
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {actions.slice(0,6).map(([action,count])=>{const maxC=actions[0]?.[1]||1;return(
+            <div key={action} style={{display:'flex',alignItems:'center',gap:10}}>
+              <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.text2,minWidth:80}}>{action}</div>
+              <div style={{flex:1,height:14,background:C.muted,borderRadius:3,overflow:'hidden'}}>
+                <div style={{height:'100%',width:`${(count/maxC*100).toFixed(0)}%`,background:'rgba(0,229,255,0.5)',borderRadius:3}}/>
+              </div>
+              <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.text,minWidth:24,textAlign:'right'}}>{count}</div>
+            </div>
+          );})}
+        </div>
+      </div>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:18}}>
+        <div style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.text2,letterSpacing:'2px',textTransform:'uppercase',marginBottom:14}}>▸ Risk Level Distribution</div>
+        <div style={{display:'flex',alignItems:'flex-end',gap:4,height:100}}>
+          {bins.map((v,i)=>{const c=i<4?C.green:i<7?C.amber:C.red;return(
+            <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+              <div style={{width:'100%',height:`${(v/maxBin*80)}px`,minHeight:v>0?2:0,background:`${c}88`,borderRadius:'2px 2px 0 0'}}/>
+              <div style={{fontFamily:'JetBrains Mono',fontSize:7,color:C.muted}}>0.{i}</div>
+            </div>
+          );})}
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+// ════════════════════════════════════════════
+// API DOCS
+// ════════════════════════════════════════════
+function APIDocs(){
+  const [open,setOpen]=useState({});const [sel,setSel]=useState('GET /health');const [res,setRes]=useState('Click Run to execute...');
+  const eps=[{m:'POST',p:'/predict',d:'Analyze a permission request. Returns risk score, decision, and SHAP explanation.',body:`{\n  "action_type": "code_exec",\n  "user_role": "guest",\n  "data_sensitivity": 3,\n  "task_alignment": 0.05,\n  "request_frequency": 52,\n  "time_of_day": 2\n}`},{m:'GET',p:'/history',d:'Retrieve last N decisions. Append ?limit=N to control count.'},{m:'POST',p:'/feedback',d:'Submit a human override for a specific decision.',body:`{\n  "decision_id": 1,\n  "override_decision": "deny",\n  "reason": "Policy violation"\n}`},{m:'GET',p:'/stats',d:'Aggregate stats: breakdown, override rate, avg risk, anomaly count.'},{m:'GET',p:'/health',d:'Health check. Confirms server running and models loaded.'}];
+  const run=async()=>{const parts=sel.split(' ');try{const r=await fetch(`${API}${parts[1]}`);const d=await r.json();setRes(JSON.stringify(d,null,2));}catch(e){setRes('Error: '+e.message);}};
+  return <div className="page-enter">
+    <div style={{display:'flex',justifyContent:'flex-end',marginBottom:16}}>
+      <a href="http://localhost:8000/docs" target="_blank" style={{padding:'8px 18px',borderRadius:6,background:`linear-gradient(135deg,${C.cyan},#0099cc)`,color:'#000',fontFamily:'JetBrains Mono',fontSize:9,fontWeight:700,letterSpacing:'1.5px',textTransform:'uppercase',textDecoration:'none'}}>↗ Swagger UI</a>
+    </div>
+    {eps.map((ep,i)=>(
+      <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,marginBottom:10,overflow:'hidden'}}>
+        <div onClick={()=>setOpen(o=>({...o,[i]:!o[i]}))} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',cursor:'pointer',transition:'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.02)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+          <span style={{fontFamily:'JetBrains Mono',fontSize:9,fontWeight:700,padding:'3px 9px',borderRadius:4,minWidth:40,textAlign:'center',background:ep.m==='GET'?'rgba(0,255,157,0.1)':'rgba(0,229,255,0.1)',color:ep.m==='GET'?C.green:C.cyan,border:`1px solid ${ep.m==='GET'?'rgba(0,255,157,0.2)':'rgba(0,229,255,0.2)'}`}}>{ep.m}</span>
+          <code style={{fontFamily:'JetBrains Mono',fontSize:12,color:C.text,flex:1}}>{ep.p}</code>
+          <span style={{fontFamily:'JetBrains Mono',fontSize:10,color:C.text2}}>{ep.d}</span>
+          <span style={{color:C.muted,marginLeft:8}}>{open[i]?'▲':'▼'}</span>
+        </div>
+        {open[i]&&ep.body&&<pre style={{padding:'12px 16px',fontFamily:'JetBrains Mono',fontSize:10,color:C.cyan,background:'rgba(0,0,0,0.2)',borderTop:`1px solid ${C.border}`,whiteSpace:'pre-wrap',margin:0}}>{ep.body}</pre>}
+      </div>
+    ))}
+    <Card title="Live API Tester" style={{marginTop:16}}>
+      <div style={{display:'flex',gap:10,marginBottom:14,alignItems:'flex-end'}}>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:'JetBrains Mono',fontSize:9,letterSpacing:'2px',textTransform:'uppercase',color:C.text2,marginBottom:7}}>Endpoint</div>
+          <select value={sel} onChange={e=>setSel(e.target.value)} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,padding:'9px 12px',color:C.text,fontFamily:'JetBrains Mono',fontSize:11,outline:'none',appearance:'none',width:'100%'}}>
+            {['GET /health','GET /stats','GET /history?limit=5'].map(v=><option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <button onClick={run} style={{padding:'9px 18px',borderRadius:6,background:`linear-gradient(135deg,${C.cyan},#0099cc)`,border:'none',color:'#000',fontFamily:'JetBrains Mono',fontSize:10,fontWeight:700,cursor:'pointer',height:38,letterSpacing:'1px'}}>▶ Run</button>
+      </div>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,padding:14}}>
+        <div style={{fontFamily:'JetBrains Mono',fontSize:8,color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:8}}>Response</div>
+        <pre style={{fontFamily:'JetBrains Mono',fontSize:10,color:C.cyan,whiteSpace:'pre-wrap',wordBreak:'break-all',maxHeight:240,overflowY:'auto',margin:0}}>{res}</pre>
+      </div>
+    </Card>
+  </div>;
+}
+
+// ════════════════════════════════════════════
+// ROW MODAL
+// ════════════════════════════════════════════
+function RowModal({row,onClose}){
+  const [toast,setToast]=useState(null);
+  const rc=row.risk_score<.35?C.green:row.risk_score<.65?C.amber:C.red;
+  const shap=row.shap_explanation||[];const maxM=Math.max(...shap.map(e=>e.magnitude||0),0.01);
+  const showToast=(m,t)=>{setToast({msg:m,type:t});setTimeout(()=>setToast(null),3000);};
+  const override=async(dec)=>{
+    try{await fetch(`${API}/feedback`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision_id:row.id,override_decision:dec,reason:'Modal override'})});showToast(`Override → ${dec.toUpperCase()}`,'ok');onClose();}
+    catch{showToast('Failed','err');}
+  };
+  return <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',backdropFilter:'blur(8px)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',animation:'fadeIn .2s'}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border2}`,borderRadius:12,padding:28,width:520,maxWidth:'92vw',maxHeight:'82vh',overflowY:'auto',position:'relative',boxShadow:'0 40px 100px rgba(0,0,0,0.7)',animation:'scaleIn .25s cubic-bezier(0.16,1,0.3,1)'}}>
+      <button onClick={onClose} style={{position:'absolute',top:14,right:14,background:'transparent',border:'none',color:C.text2,fontSize:16,cursor:'pointer'}}>✕</button>
+      <div style={{fontFamily:'Orbitron',fontSize:13,fontWeight:700,letterSpacing:'2px',marginBottom:20,color:C.text}}>Decision Detail</div>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:18}}>
+        <Badge d={row.decision}/>
+        <span style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.muted}}>#{row.id} · {new Date(row.timestamp).toLocaleString()}</span>
+        {row.is_anomalous&&<span style={{color:C.red,fontSize:12}}>🚨 ANOMALY</span>}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16}}>
+        {[{k:'Action',v:row.action_type,c:C.cyan},{k:'Role',v:row.user_role},{k:'Risk',v:row.risk_score?.toFixed(4),c:rc},{k:'Confidence',v:`${(row.confidence*100).toFixed(2)}%`},{k:'Sensitivity',v:`${row.data_sensitivity}/3`},{k:'Frequency',v:`${row.request_frequency}/hr`}].map(({k,v,c})=>(
+          <div key={k} style={{background:'rgba(0,0,0,0.2)',border:`1px solid ${C.border}`,borderRadius:7,padding:'9px 12px'}}>
+            <div style={{fontFamily:'JetBrains Mono',fontSize:8,color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:3}}>{k}</div>
+            <div style={{fontFamily:'JetBrains Mono',fontSize:12,fontWeight:600,color:c||C.text}}>{v}</div>
+          </div>
+        ))}
+      </div>
+      {shap.length>0&&<div style={{marginBottom:14}}>
+        <div style={{fontFamily:'JetBrains Mono',fontSize:8,color:C.text2,letterSpacing:'2px',textTransform:'uppercase',marginBottom:10}}>SHAP Factors</div>
+        {shap.slice(0,5).map((e,i)=><ShapBar key={i} name={e.feature} value={e.shap_value} magnitude={e.magnitude} maxMag={maxM}/>)}
+      </div>}
+      {row.is_override&&<div style={{marginBottom:14,padding:10,background:'rgba(255,200,64,0.08)',border:'1px solid rgba(255,200,64,0.2)',borderRadius:6,fontFamily:'JetBrains Mono',fontSize:9,color:C.amber}}>👤 Override → {row.override_decision?.toUpperCase()}</div>}
+      <div style={{display:'flex',alignItems:'center',gap:8,padding:'12px 14px',background:'rgba(0,0,0,0.2)',border:`1px solid ${C.border}`,borderRadius:8,flexWrap:'wrap'}}>
+        <span style={{fontFamily:'JetBrains Mono',fontSize:9,color:C.muted,marginRight:4}}>Override:</span>
+        {['allow','escalate','deny'].map(dec=>{const cs={allow:{bg:'rgba(0,255,157,0.1)',c:C.green,b:'rgba(0,255,157,0.25)',l:'✓ Allow'},escalate:{bg:'rgba(255,200,64,0.1)',c:C.amber,b:'rgba(255,200,64,0.25)',l:'⚠ Escalate'},deny:{bg:'rgba(255,63,91,0.1)',c:C.red,b:'rgba(255,63,91,0.25)',l:'✕ Deny'}}[dec];return <button key={dec} onClick={()=>override(dec)} style={{padding:'5px 13px',borderRadius:5,background:cs.bg,color:cs.c,border:`1px solid ${cs.b}`,fontFamily:'JetBrains Mono',fontSize:9,fontWeight:700,cursor:'pointer'}}>{cs.l}</button>;})}
+      </div>
+    </div>
+    {toast&&<Toast msg={toast.msg} type={toast.type}/>}
+  </div>;
+}
+
+// ════════════════════════════════════════════
+// APP ROOT
+// ════════════════════════════════════════════
+function App(){
+  const [page,setPage]=useState('dashboard');
+  const [isOnline,setIsOnline]=useState(false);const [total,setTotal]=useState(0);
+  const time=useClock();
+  const titles={dashboard:'Dashboard',llm:'LLM Interface',predict:'Predict',history:'History',analytics:'Analytics',apidocs:'API Reference'};
+  useEffect(()=>{
+    const check=async()=>{try{const r=await fetch(`${API}/health`,{signal:AbortSignal.timeout(3000)});const d=await r.json();setIsOnline(d.status==='healthy'&&d.models_loaded);}catch{setIsOnline(false);}};
+    check();const t=setInterval(check,10000);return()=>clearInterval(t);
+  },[]);
+  useEffect(()=>{
+    const load=()=>fetch(`${API}/stats`).then(r=>r.json()).then(d=>setTotal(d.total_decisions||0)).catch(()=>{});
+    load();const t=setInterval(load,8000);return()=>clearInterval(t);
+  },[]);
+  const PAGES={dashboard:<Dashboard/>,llm:<LLMInterface/>,predict:<Predict/>,history:<History/>,analytics:<Analytics/>,apidocs:<APIDocs/>};
+  return <div style={{display:'flex',minHeight:'100vh'}}>
+    <Sidebar page={page} setPage={p=>{setPage(p);if(p==='analytics'){setTimeout(()=>window.dispatchEvent(new Event('resize')),100);}}} isOnline={isOnline} total={total}/>
+    <div style={{marginLeft:254,flex:1,display:'flex',flexDirection:'column'}}>
+      <div style={{height:56,background:'rgba(8,12,24,0.9)',backdropFilter:'blur(20px)',borderBottom:`1px solid ${C.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 28px',position:'sticky',top:0,zIndex:50}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,fontFamily:'JetBrains Mono',fontSize:11,color:C.text2}}>PRISM <span style={{color:C.muted}}>›</span> <span style={{color:C.text,fontWeight:500}}>{titles[page]}</span></div>
+        <div style={{display:'flex',alignItems:'center',gap:14}}>
+          <div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 12px',borderRadius:20,border:'1px solid rgba(0,229,255,0.18)',background:'rgba(0,229,255,0.06)',fontFamily:'JetBrains Mono',fontSize:9,letterSpacing:'1px',color:C.cyan}}>
+            <div style={{width:5,height:5,borderRadius:'50%',background:C.cyan,animation:'pulse 2s infinite'}}/>localhost:8000
+          </div>
+          <div style={{fontFamily:'JetBrains Mono',fontSize:11,color:C.text2,letterSpacing:'1px'}}>{time}</div>
+        </div>
+      </div>
+      <div key={page} style={{padding:28,flex:1}}>{PAGES[page]}</div>
+    </div>
+  </div>;
+}
+
+function Root(){
+  const [inApp,setInApp]=useState(false);
+  return <div style={{minHeight:'100vh'}}>
+    {!inApp&&<Landing onEnter={()=>setInApp(true)}/>}
+    {inApp&&<App/>}
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
+</script>
+</body>
+</html>
